@@ -1,0 +1,196 @@
+/* ============================================
+   WhatsApp Auto Translator — Premium Styles v2
+   Supports BOTH light & dark WhatsApp themes
+   ============================================ */
+
+/* --- Translation badge below each message --- */
+.wat-translation {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-left: 3px solid #128C7E;
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  position: relative;
+  animation: wat-slide-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+  word-wrap: break-word;
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Label */
+.wat-translation-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #128C7E;
+  margin-bottom: 3px;
+  user-select: none;
+}
+
+.wat-translation-label .wat-icon {
+  font-size: 11px;
+}
+
+/* Translated text */
+.wat-translation-text {
+  display: block;
+  color: #1a1a1a;
+  font-size: 13.5px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+/* ---- Loading state with animated dots ---- */
+.wat-translation--loading {
+  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+  border-left-color: #25D366;
+}
+
+.wat-translation--loading .wat-translation-text {
+  color: #888;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Animated spinner */
+.wat-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c8e6c9;
+  border-top-color: #25D366;
+  border-radius: 50%;
+  animation: wat-spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* Pulse dots loader */
+.wat-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wat-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #25D366;
+  border-radius: 50%;
+  animation: wat-pulse 1.2s ease-in-out infinite;
+}
+
+.wat-dots span:nth-child(2) { animation-delay: 0.2s; }
+.wat-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ---- Error state ---- */
+.wat-translation--error {
+  border-left-color: #e53935;
+  background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%);
+}
+
+.wat-translation--error .wat-translation-label {
+  color: #e53935;
+}
+
+.wat-translation--error .wat-translation-text {
+  color: #b71c1c;
+  font-size: 11.5px;
+}
+
+/* ---- Locked / Premium state ---- */
+.wat-translation--locked {
+  border-left-color: #FFB300;
+  background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
+}
+
+.wat-translation--locked .wat-translation-label {
+  color: #F57F17;
+}
+
+.wat-translation--locked .wat-translation-text {
+  color: #e65100;
+  font-size: 11.5px;
+}
+
+/* ============================================
+   DARK THEME (WhatsApp dark mode)
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  .wat-translation {
+    background: linear-gradient(135deg, #1b2f2a 0%, #1e3a34 100%);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .wat-translation-text {
+    color: #e8e8e8;
+  }
+
+  .wat-translation--loading {
+    background: linear-gradient(135deg, #1e272e 0%, #232d33 100%);
+  }
+
+  .wat-translation--loading .wat-translation-text {
+    color: #aaa;
+  }
+
+  .wat-translation--error {
+    background: linear-gradient(135deg, #3e1f1f 0%, #4a2020 100%);
+  }
+
+  .wat-translation--error .wat-translation-text {
+    color: #ff8a80;
+  }
+
+  .wat-translation--locked {
+    background: linear-gradient(135deg, #3e3315 0%, #4a3a15 100%);
+  }
+}
+
+/* Also detect WhatsApp's own dark class */
+body.dark .wat-translation,
+.dark .wat-translation {
+  background: linear-gradient(135deg, #1b2f2a 0%, #1e3a34 100%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+body.dark .wat-translation-text,
+.dark .wat-translation-text {
+  color: #e8e8e8;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes wat-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wat-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes wat-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

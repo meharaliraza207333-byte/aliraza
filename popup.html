@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Translator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      font-family: 'Inter', 'Segoe UI', sans-serif;
+      background: #0a0f1c;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+
+    /* ---- HEADER ---- */
+    .header {
+      background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+      padding: 22px 20px 18px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #25D366, transparent);
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .header .subtitle {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+      font-weight: 400;
+    }
+
+    /* ---- STATUS BAR ---- */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: #111827;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #25D366;
+      box-shadow: 0 0 10px rgba(37, 211, 102, 0.5);
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+
+    .status-dot.off {
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+      animation: none;
+    }
+
+    @keyframes glow {
+      from { box-shadow: 0 0 6px rgba(37, 211, 102, 0.3); }
+      to   { box-shadow: 0 0 14px rgba(37, 211, 102, 0.6); }
+    }
+
+    /* Toggle */
+    .toggle { position: relative; width: 46px; height: 24px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #374151; border-radius: 24px; cursor: pointer;
+      transition: background 0.3s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform 0.3s;
+    }
+    .toggle input:checked + .toggle-slider { background: #25D366; }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(22px); }
+
+    /* ---- COUNTER ---- */
+    .counter-bar {
+      padding: 10px 20px;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #64748b;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .counter-bar .count {
+      font-weight: 600;
+      color: #25D366;
+    }
+
+    .counter-bar .limit {
+      color: #94a3b8;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 3px;
+      background: #1e293b;
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #25D366, #128C7E);
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    .progress-fill.warning { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+    /* ---- SETTINGS ---- */
+    .settings { padding: 16px 20px; }
+
+    .field { margin-bottom: 14px; }
+
+    .field label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .field select {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.3s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2325D366' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+    }
+
+    .field select:focus { border-color: #25D366; }
+
+    /* ---- PREMIUM CARD ---- */
+    .premium-card {
+      margin: 0 20px 16px;
+      padding: 18px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border: 1px solid #25D36640;
+      border-radius: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .premium-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, #25D36610 0%, transparent 70%);
+    }
+
+    .premium-card.active {
+      border-color: #25D366;
+      background: linear-gradient(135deg, #0a2e1a 0%, #0f3d22 100%);
+    }
+
+    .premium-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #fbbf24;
+      margin-bottom: 8px;
+    }
+
+    .premium-badge.active-badge { color: #25D366; }
+
+    .premium-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .premium-desc {
+      font-size: 11.5px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .premium-features {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+
+    .premium-features li {
+      font-size: 11.5px;
+      color: #cbd5e1;
+      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .premium-features li::before {
+      content: '✓';
+      color: #25D366;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .btn-premium {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #000;
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+      z-index: 1;
+    }
+
+    .btn-premium:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(37, 211, 102, 0.3);
+    }
+
+    .btn-premium:active { transform: translateY(0); }
+
+    .btn-premium.subscribed {
+      background: #1e293b;
+      color: #25D366;
+      border: 1px solid #25D366;
+      cursor: default;
+    }
+
+    .price {
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 2px;
+    }
+
+    .price span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #94a3b8;
+    }
+
+    /* ---- FOOTER ---- */
+    .footer {
+      padding: 12px 20px;
+      text-align: center;
+      font-size: 9px;
+      color: #334155;
+      border-top: 1px solid #1e293b;
+    }
+
+    /* ---- API KEY INPUT ---- */
+    .api-key-section {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #1e293b;
+    }
+
+    .api-key-section label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .api-key-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .api-key-row input {
+      flex: 1;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-family: 'Inter', monospace;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    .api-key-row input:focus { border-color: #25D366; }
+
+    .api-key-row input::placeholder { color: #475569; }
+
+    .btn-save {
+      padding: 9px 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: #000;
+      background: #25D366;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-save:hover { opacity: 0.85; }
+    .btn-save.saved { background: #334155; color: #25D366; }
+
+    .api-key-hint {
+      font-size: 9.5px;
+      color: #475569;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .api-key-hint a {
+      color: #25D366;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1>🌐 WhatsApp Translator</h1>
+    <p class="subtitle">Real-time AI-powered message translation</p>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-indicator">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Active</span>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="toggleEnabled" checked />
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+
+  <!-- Translation Counter -->
+  <div class="counter-bar" id="counterBar">
+    <div>
+      Translations: <span class="count" id="transCount">0</span>
+      <span class="limit" id="transLimit">/ 20 free</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings">
+    <div class="field">
+      <label for="sourceLang">Source Language</label>
+      <select id="sourceLang">
+        <option value="auto" selected>Auto Detect (Roman Urdu ✓)</option>
+        <option value="en">English</option>
+        <option value="ur">Urdu (اردو)</option>
+        <option value="hi">Hindi</option>
+        <option value="ar">Arabic</option>
+        <option value="zh">Chinese</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="ja">Japanese</option>
+        <option value="ko">Korean</option>
+        <option value="pt">Portuguese</option>
+        <option value="ru">Russian</option>
+        <option value="tr">Turkish</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="targetLang">Target Language</label>
+      <select id="targetLang">
+        <option value="en" selected>English</option>
+        <option value="ur">Urdu</option>
+        <option value="hi">Hindi</option>
+        <option value="ar">Arabic</option>
+        <option value="zh">Chinese</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="ja">Japanese</option>
+        <option value="ko">Korean</option>
+        <option value="pt">Portuguese</option>
+        <option value="ru">Russian</option>
+        <option value="tr">Turkish</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Premium Subscription Card -->
+  <div class="premium-card" id="premiumCard">
+    <div class="premium-badge" id="premiumBadge">👑 Premium</div>
+    <div class="price" id="priceTag">$4.99 <span>/ month</span></div>
+    <p class="premium-desc">Unlock unlimited translations with the official Google Cloud API.</p>
+    <ul class="premium-features">
+      <li>Unlimited translations</li>
+      <li>Official Google Cloud API</li>
+      <li>Production-grade reliability</li>
+      <li>130+ languages supported</li>
+    </ul>
+    <button class="btn-premium" id="btnSubscribe">Upgrade to Premium</button>
+
+    <!-- API Key Input (shown after subscription) -->
+    <div class="api-key-section" id="apiKeySection" style="display: none;">
+      <label for="apiKeyInput">Google Cloud API Key</label>
+      <div class="api-key-row">
+        <input type="password" id="apiKeyInput" placeholder="Enter your API key" autocomplete="off" />
+        <button class="btn-save" id="btnSaveKey">Save</button>
+      </div>
+      <p class="api-key-hint">
+        Get your key from <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    WhatsApp Translator v1.0 &middot; Powered by Google Translate &middot; Secure & Private
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
