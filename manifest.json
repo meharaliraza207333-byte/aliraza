@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WhatsApp Auto Translator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Automatically translates incoming WhatsApp messages from Urdu (or any language) to English in real time.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [

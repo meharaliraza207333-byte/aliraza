@@ -29,7 +29,7 @@
   /* ============================================
      CONSTANTS
      ============================================ */
-  const FREE_LIMIT = 20;
+  const FREE_LIMIT = 20; // Free tier limit — upgrade to Premium for unlimited
 
   // ⚠️ REPLACE with your actual Stripe Payment Link
   const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_HERE';

@@ -24,29 +24,30 @@
     RETRY_DELAY: 2000,
     MARKER_ATTR: 'data-wat-translated',
     POLL_INTERVAL: 3000,
-    FREE_LIMIT: 999999,  // ⚠️ TESTING MODE — unlimited (change to 20 for production)
+    FREE_LIMIT: 20,  // Free tier limit — upgrade to Premium for unlimited
   };
 
   const SELECTORS = {
     chatPane: [
       '[data-testid="conversation-panel-messages"]',
-      '#main [role="application"]',
+      '#main div[role="application"]',
       '#main .copyable-area',
       '#main',
     ],
     messageRow: [
-      'div.message-in[data-id]',
       'div.message-in',
-      '[data-testid="msg-container"]',
-      'div[data-id]',
       'div[class*="message-in"]',
+      '[data-testid="msg-container"]',
+      'div[role="row"].message-in',
     ],
     messageText: [
+      '[data-testid="balloon-text-content"] span[dir]',
+      'span[dir="ltr"]',
+      'span[dir="rtl"]',
+      'span[dir="auto"]',
       'span.selectable-text span',
       'span.selectable-text',
-      '[data-testid="balloon-text-content"] span',
-      'span[dir] span',
-      'span[dir]',
+      '[class*="copyable-text"] span[dir]',
       '[class*="copyable-text"] span',
     ],
   };
@@ -201,46 +202,61 @@
   /* ============================================
      DOM HELPERS
      ============================================ */
+  function isNoiseText(text) {
+    if (!text) return true;
+    const t = text.trim();
+    if (t.length < 2) return true;
+    if (/^\d{1,2}:\d{2}(\s?(AM|PM|am|pm))?$/.test(t)) return true;
+    if (/^[✓✔✔✔]+$/.test(t)) return true;
+    if (/^[\u200B-\u200D\uFEFF]+$/.test(t)) return true;
+    return false;
+  }
+
   function extractMessageText(messageEl) {
+    const root = messageEl.closest('.message-in') || messageEl;
     for (const sel of SELECTORS.messageText) {
       try {
-        const textEl = messageEl.querySelector(sel);
+        const textEl = root.querySelector(sel);
         if (textEl) {
           const text = textEl.innerText?.trim();
-          if (text && text.length > 0) return text;
+          if (!isNoiseText(text)) return text;
         }
       } catch (_) { /* skip */ }
     }
-    // Fallback: walk spans
-    const allSpans = messageEl.querySelectorAll('span');
-    for (const span of allSpans) {
+
+    // Fallback: longest meaningful span text in the bubble
+    const bubble = findBubble(root);
+    let best = '';
+    bubble.querySelectorAll('span[dir], span').forEach((span) => {
       const t = span.innerText?.trim();
-      if (t && t.length > 3 && !/^\d{1,2}:\d{2}/.test(t)) return t;
-    }
-    return '';
+      if (!isNoiseText(t) && t.length > best.length) best = t;
+    });
+    return best;
   }
 
   function isIncomingMessage(el) {
-    if (el.classList?.contains('message-in')) return true;
+    if (el.closest('.message-out')) return false;
+    if (el.classList?.contains('message-in') || el.closest('.message-in')) return true;
+
     let parent = el;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       if (!parent) break;
-      if (parent.classList?.contains('message-in')) return true;
       if (parent.classList?.contains('message-out')) return false;
+      if (parent.classList?.contains('message-in')) return true;
       parent = parent.parentElement;
     }
-    if (!el.closest('.message-out') && el.closest('[data-id]')) {
-      const dataId = el.closest('[data-id]')?.getAttribute('data-id') || '';
-      if (dataId.startsWith('false_')) return true;
-      if (dataId.startsWith('true_')) return false;
-    }
+
+    const dataId = el.closest('[data-id]')?.getAttribute('data-id') || '';
+    if (dataId.startsWith('false_')) return true;
+    if (dataId.startsWith('true_')) return false;
     return false;
   }
 
   function findBubble(messageEl) {
-    return messageEl.querySelector('[data-testid="msg-container"]') ||
-           messageEl.querySelector('[class*="copyable-text"]')?.parentElement ||
-           messageEl;
+    const root = messageEl.closest('.message-in') || messageEl;
+    return root.querySelector('[data-testid="msg-container"]') ||
+           root.querySelector('[class*="copyable-text"]')?.closest('div') ||
+           root;
   }
 
   /* ============================================
@@ -382,24 +398,25 @@
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
 
-        if (node.hasAttribute?.('data-id') && isIncomingMessage(node)) {
+        if (node.matches?.('.message-in') && isIncomingMessage(node)) {
           if (!node.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(node);
         }
 
         try {
           queryAll(node, SELECTORS.messageRow).forEach((row) => {
-            if (!row.getAttribute(CONFIG.MARKER_ATTR) && isIncomingMessage(row)) newMessages.add(row);
+            const msgEl = row.closest('.message-in') || row;
+            if (!msgEl.getAttribute(CONFIG.MARKER_ATTR) && isIncomingMessage(msgEl)) newMessages.add(msgEl);
           });
         } catch (_) {}
 
         if (node.matches?.('[data-testid="msg-container"]')) {
-          const parent = node.closest('[data-id]');
-          if (parent && isIncomingMessage(parent) && !parent.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(parent);
+          const parent = node.closest('.message-in');
+          if (parent && !parent.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(parent);
         }
 
         try {
-          node.querySelectorAll?.('[data-id]')?.forEach((child) => {
-            if (isIncomingMessage(child) && !child.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(child);
+          node.querySelectorAll?.('.message-in')?.forEach((child) => {
+            if (!child.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(child);
           });
         } catch (_) {}
       }
@@ -441,11 +458,14 @@
 
   function scanExistingMessages(root) {
     if (!isEnabled) return;
-    const messages = queryAll(root, SELECTORS.messageRow);
+    const messages = new Set();
+    queryAll(root, SELECTORS.messageRow).forEach((el) => {
+      const msgEl = el.closest('.message-in') || el;
+      if (isIncomingMessage(msgEl)) messages.add(msgEl);
+    });
+    root.querySelectorAll?.('.message-in')?.forEach((el) => messages.add(el));
     messages.forEach((el) => {
-      if (isIncomingMessage(el) && !el.getAttribute(CONFIG.MARKER_ATTR)) {
-        pendingQueue.push(el);
-      }
+      if (!el.getAttribute(CONFIG.MARKER_ATTR)) pendingQueue.push(el);
     });
     if (pendingQueue.length > 0) drainQueue();
   }
@@ -487,13 +507,13 @@
       }, 3000);
     } else {
       startPolling();
-    }
+    } 
   }
 
   if (document.readyState === 'complete') {
-    setTimeout(init, 2000);
+    setTimeout(init, 1000);
   } else {
-    window.addEventListener('load', () => setTimeout(init, 3000));
+    window.addEventListener('load', () => setTimeout(init, 1500));
   }
 
 })();
