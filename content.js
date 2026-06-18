@@ -1,54 +1,60 @@
 /**
- * WhatsApp Auto Translator — Content Script v3 (Production)
+ * WhatsApp Auto Translator — Content Script v4 (Fixed)
  * ----------------------------------------------------------
+ * - Updated selectors for current WhatsApp Web DOM (2025+)
+ * - Reliable Google Translate free endpoint
+ * - Proper incoming message detection
  * - No debug logs in production
  * - Security: input sanitization, CSP-safe
  * - Premium subscription gating via chrome.storage
  * - Animated loader UX
- * - Google Translate (FREE, no API key)
  */
 
 (() => {
   'use strict';
 
   const CONFIG = {
-    // FREE tier — unofficial Google Translate (no key, limited)
+    // FREE tier — unofficial Google Translate (no key)
     FREE_API_URL: 'https://translate.googleapis.com/translate_a/single',
-    // PREMIUM tier — official Google Cloud Translation API v2 (reliable, unlimited)
+    // PREMIUM tier — official Google Cloud Translation API v2
     PAID_API_URL: 'https://translation.googleapis.com/language/translate/v2',
     PAID_API_KEY: '',      // loaded from chrome.storage
     SOURCE_LANG: 'auto',
     TARGET_LANG: 'en',
-    DEBOUNCE_MS: 500,
-    MAX_RETRIES: 2,
-    RETRY_DELAY: 2000,
+    DEBOUNCE_MS: 600,
+    MAX_RETRIES: 3,
+    RETRY_DELAY: 1500,
     MARKER_ATTR: 'data-wat-translated',
     POLL_INTERVAL: 3000,
-    FREE_LIMIT: 20,  // Free tier limit — upgrade to Premium for unlimited
+    FREE_LIMIT: 20,
   };
 
+  // Updated selectors for WhatsApp Web 2025
   const SELECTORS = {
     chatPane: [
+      // Most specific first
       '[data-testid="conversation-panel-messages"]',
-      '#main div[role="application"]',
+      'div[role="application"]',
       '#main .copyable-area',
+      '#main [role="list"]',
       '#main',
     ],
+    // Incoming messages — WhatsApp marks them with data-id starting with "false_"
+    // or the class message-in (older builds)
     messageRow: [
+      'div[data-id^="false_"]',   // ✅ Current WhatsApp Web — incoming
       'div.message-in',
-      'div[class*="message-in"]',
       '[data-testid="msg-container"]',
-      'div[role="row"].message-in',
     ],
     messageText: [
-      '[data-testid="balloon-text-content"] span[dir]',
-      'span[dir="ltr"]',
+      // Most precise selector for text content
+      '[data-testid="balloon-text-content"] > span',
+      'span.selectable-text[dir]',
+      '[class*="copyable-text"] span[dir]',
       'span[dir="rtl"]',
+      'span[dir="ltr"]',
       'span[dir="auto"]',
       'span.selectable-text span',
-      'span.selectable-text',
-      '[class*="copyable-text"] span[dir]',
-      '[class*="copyable-text"] span',
     ],
   };
 
@@ -80,7 +86,7 @@
     );
 
     chrome.storage?.onChanged.addListener((changes) => {
-      if (changes.watEnabled) isEnabled = changes.watEnabled.newValue;
+      if (changes.watEnabled !== undefined) isEnabled = changes.watEnabled.newValue;
       if (changes.watSourceLang) CONFIG.SOURCE_LANG = changes.watSourceLang.newValue;
       if (changes.watTargetLang) CONFIG.TARGET_LANG = changes.watTargetLang.newValue;
       if (changes.watPremium) isPremium = changes.watPremium.newValue;
@@ -99,76 +105,64 @@
   }
 
   function isValidText(text) {
-    return typeof text === 'string' && text.length >= 2 && text.length <= 5000;
-  }
-
-  /* ============================================
-     SELECTOR HELPERS
-     ============================================ */
-  function queryFirst(root, selectorList) {
-    for (const sel of selectorList) {
-      try {
-        const el = root.querySelector(sel);
-        if (el) return el;
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  function queryAll(root, selectorList) {
-    const results = new Set();
-    for (const sel of selectorList) {
-      try { root.querySelectorAll(sel).forEach((el) => results.add(el)); }
-      catch (_) {}
-    }
-    return results;
+    return typeof text === 'string' && text.trim().length >= 2 && text.length <= 5000;
   }
 
   /* ============================================
      TRANSLATION API — Dual Mode
-     Free users  → unofficial Google Translate (free, limited)
-     Premium     → official Google Cloud Translation API v2
      ============================================ */
 
   /**
    * FREE tier: unofficial Google Translate endpoint
-   * Returns { text, detectedLang } so we can skip same-language messages
+   * Uses client=gtx which works without an API key
    */
   async function translateFree(text) {
-    const params = new URLSearchParams({
-      client: 'gtx',
-      sl: CONFIG.SOURCE_LANG,
-      tl: CONFIG.TARGET_LANG,
-      dt: 't',
-      q: text,
+    const url = new URL(CONFIG.FREE_API_URL);
+    url.searchParams.set('client', 'gtx');
+    url.searchParams.set('sl', CONFIG.SOURCE_LANG);
+    url.searchParams.set('tl', CONFIG.TARGET_LANG);
+    url.searchParams.set('dt', 't');
+    url.searchParams.set('q', text);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
     });
 
-    const response = await fetch(`${CONFIG.FREE_API_URL}?${params.toString()}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
     let translated = '';
-    if (data?.[0]) {
-      translated = data[0].map(p => p[0]).filter(Boolean).join('');
+    if (Array.isArray(data?.[0])) {
+      translated = data[0]
+        .filter(p => Array.isArray(p) && p[0])
+        .map(p => p[0])
+        .join('');
     }
-    const detectedLang = data?.[2] || '';
-    return { text: translated, detectedLang };
+    const detectedLang = data?.[2] ?? '';
+    return { text: translated.trim(), detectedLang };
   }
 
   /**
    * PREMIUM tier: official Google Cloud Translation API v2
    */
   async function translatePremium(text) {
-    const params = new URLSearchParams({ key: CONFIG.PAID_API_KEY });
-    const response = await fetch(`${CONFIG.PAID_API_URL}?${params.toString()}`, {
+    const url = new URL(CONFIG.PAID_API_URL);
+    url.searchParams.set('key', CONFIG.PAID_API_KEY);
+
+    const body = {
+      q: text,
+      target: CONFIG.TARGET_LANG,
+      format: 'text',
+    };
+    if (CONFIG.SOURCE_LANG !== 'auto') {
+      body.source = CONFIG.SOURCE_LANG;
+    }
+
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        q: text,
-        source: CONFIG.SOURCE_LANG === 'auto' ? undefined : CONFIG.SOURCE_LANG,
-        target: CONFIG.TARGET_LANG,
-        format: 'text',
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -176,12 +170,11 @@
     const data = await response.json();
     const translated = data?.data?.translations?.[0]?.translatedText || '';
     const detectedLang = data?.data?.translations?.[0]?.detectedSourceLanguage || '';
-    return { text: translated, detectedLang };
+    return { text: translated.trim(), detectedLang };
   }
 
   /**
-   * Main translate function — picks API based on subscription
-   * Returns { text, detectedLang }
+   * Main translate function with exponential backoff retry
    */
   async function translateText(text, attempt = 0) {
     try {
@@ -192,7 +185,7 @@
       }
     } catch (err) {
       if (attempt < CONFIG.MAX_RETRIES) {
-        await sleep(CONFIG.RETRY_DELAY);
+        await sleep(CONFIG.RETRY_DELAY * Math.pow(1.5, attempt));
         return translateText(text, attempt + 1);
       }
       throw err;
@@ -206,61 +199,91 @@
     if (!text) return true;
     const t = text.trim();
     if (t.length < 2) return true;
+    // Time stamps like "12:30 PM"
     if (/^\d{1,2}:\d{2}(\s?(AM|PM|am|pm))?$/.test(t)) return true;
+    // Tick marks (message status icons)
     if (/^[✓✔✔✔]+$/.test(t)) return true;
+    // Zero-width chars
     if (/^[\u200B-\u200D\uFEFF]+$/.test(t)) return true;
+    // Pure emoji only (optional — comment out if you want emoji messages translated)
+    // if (/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})+$/u.test(t)) return true;
     return false;
   }
 
+  /**
+   * Extracts the main visible text from a message element.
+   * Tries each selector in order, returns the first valid non-noise text.
+   */
   function extractMessageText(messageEl) {
-    const root = messageEl.closest('.message-in') || messageEl;
+    // Walk up to find the actual message container
+    const root = messageEl.closest('[data-id]') || messageEl.closest('.message-in') || messageEl;
+
     for (const sel of SELECTORS.messageText) {
       try {
-        const textEl = root.querySelector(sel);
-        if (textEl) {
-          const text = textEl.innerText?.trim();
+        const candidates = root.querySelectorAll(sel);
+        for (const el of candidates) {
+          const text = el.innerText?.trim() ?? el.textContent?.trim();
           if (!isNoiseText(text)) return text;
         }
-      } catch (_) { /* skip */ }
+      } catch (_) { /* skip bad selector */ }
     }
 
-    // Fallback: longest meaningful span text in the bubble
-    const bubble = findBubble(root);
+    // Last-resort fallback: pick the longest meaningful span
     let best = '';
-    bubble.querySelectorAll('span[dir], span').forEach((span) => {
-      const t = span.innerText?.trim();
-      if (!isNoiseText(t) && t.length > best.length) best = t;
-    });
+    try {
+      root.querySelectorAll('span').forEach((span) => {
+        const t = (span.innerText ?? span.textContent)?.trim();
+        if (!isNoiseText(t) && t.length > best.length) best = t;
+      });
+    } catch (_) {}
     return best;
   }
 
+  /**
+   * Returns true if this element represents an INCOMING message.
+   * WhatsApp uses:
+   *   - data-id="false_..." → incoming
+   *   - data-id="true_..."  → outgoing
+   *   - class "message-in"  → incoming (older builds)
+   *   - class "message-out" → outgoing
+   */
   function isIncomingMessage(el) {
-    if (el.closest('.message-out')) return false;
-    if (el.classList?.contains('message-in') || el.closest('.message-in')) return true;
+    // Check data-id attribute (most reliable on current WhatsApp Web)
+    const dataId = el.getAttribute('data-id') ||
+                   el.closest('[data-id]')?.getAttribute('data-id') || '';
+    if (dataId.startsWith('true_')) return false;   // outgoing
+    if (dataId.startsWith('false_')) return true;   // incoming
 
+    // Fallback: CSS class check
+    if (el.closest('.message-out')) return false;
+    if (el.closest('.message-in') || el.classList?.contains('message-in')) return true;
+
+    // Walk up limited depth
     let parent = el;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       if (!parent) break;
       if (parent.classList?.contains('message-out')) return false;
       if (parent.classList?.contains('message-in')) return true;
       parent = parent.parentElement;
     }
 
-    const dataId = el.closest('[data-id]')?.getAttribute('data-id') || '';
-    if (dataId.startsWith('false_')) return true;
-    if (dataId.startsWith('true_')) return false;
     return false;
   }
 
+  /**
+   * Finds the visual bubble element to append the translation badge to.
+   */
   function findBubble(messageEl) {
-    const root = messageEl.closest('.message-in') || messageEl;
-    return root.querySelector('[data-testid="msg-container"]') ||
-           root.querySelector('[class*="copyable-text"]')?.closest('div') ||
-           root;
+    const root = messageEl.closest('[data-id]') || messageEl.closest('.message-in') || messageEl;
+    return (
+      root.querySelector('[data-testid="msg-container"]') ||
+      root.querySelector('[class*="copyable-text"]')?.closest('div') ||
+      root
+    );
   }
 
   /* ============================================
-     BADGE CREATION — Premium UI
+     BADGE CREATION
      ============================================ */
   function createLoadingBadge() {
     const badge = document.createElement('div');
@@ -312,16 +335,14 @@
      MESSAGE PROCESSING
      ============================================ */
   async function processMessage(messageEl) {
-    // DEDUP CHECK 1: marker attribute
+    // DEDUP: marker attribute or existing badge
     if (messageEl.getAttribute(CONFIG.MARKER_ATTR)) return;
-
-    // DEDUP CHECK 2: already has a translation badge in DOM
     if (messageEl.querySelector('.wat-translation')) return;
 
     const text = extractMessageText(messageEl);
     if (!isValidText(text)) return;
 
-    // Mark IMMEDIATELY to prevent any race condition duplicates
+    // Mark immediately to prevent race conditions
     messageEl.setAttribute(CONFIG.MARKER_ATTR, 'pending');
 
     // Check free limit
@@ -336,7 +357,7 @@
 
     const bubble = findBubble(messageEl);
 
-    // DEDUP CHECK 3: bubble already has badge
+    // DEDUP: bubble already has badge
     if (bubble.querySelector('.wat-translation')) {
       messageEl.setAttribute(CONFIG.MARKER_ATTR, 'done');
       return;
@@ -348,8 +369,14 @@
     try {
       const result = await translateText(text);
 
-      // Skip if detected language IS the target language (already in English)
-      if (result.detectedLang === CONFIG.TARGET_LANG) {
+      if (!result.text) {
+        badge.remove();
+        messageEl.setAttribute(CONFIG.MARKER_ATTR, 'empty');
+        return;
+      }
+
+      // Skip if detected language IS the target language (already in target lang)
+      if (result.detectedLang && result.detectedLang === CONFIG.TARGET_LANG) {
         badge.remove();
         messageEl.setAttribute(CONFIG.MARKER_ATTR, 'same-lang');
         return;
@@ -368,7 +395,7 @@
       translationCount++;
       try { chrome.storage?.local.set({ watTransCount: translationCount }); } catch (_) {}
     } catch (err) {
-      setError(badge, 'Translation unavailable. Try again later.');
+      setError(badge, 'Translation unavailable. Check your connection.');
       messageEl.setAttribute(CONFIG.MARKER_ATTR, 'error');
     }
   }
@@ -379,8 +406,8 @@
     while (pendingQueue.length > 0) {
       if (!isEnabled) { pendingQueue = []; break; }
       const el = pendingQueue.shift();
-      await processMessage(el);
-      await sleep(300);
+      try { await processMessage(el); } catch (_) {}
+      await sleep(250);
     }
     isProcessing = false;
   }
@@ -398,25 +425,20 @@
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
 
-        if (node.matches?.('.message-in') && isIncomingMessage(node)) {
+        // Direct incoming message node
+        if (isIncomingMessage(node)) {
           if (!node.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(node);
         }
 
+        // Search children for incoming message containers
         try {
-          queryAll(node, SELECTORS.messageRow).forEach((row) => {
-            const msgEl = row.closest('.message-in') || row;
-            if (!msgEl.getAttribute(CONFIG.MARKER_ATTR) && isIncomingMessage(msgEl)) newMessages.add(msgEl);
+          // data-id="false_..." pattern (current WhatsApp Web)
+          node.querySelectorAll?.('[data-id^="false_"]')?.forEach((el) => {
+            if (!el.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(el);
           });
-        } catch (_) {}
-
-        if (node.matches?.('[data-testid="msg-container"]')) {
-          const parent = node.closest('.message-in');
-          if (parent && !parent.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(parent);
-        }
-
-        try {
-          node.querySelectorAll?.('.message-in')?.forEach((child) => {
-            if (!child.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(child);
+          // legacy class pattern
+          node.querySelectorAll?.('.message-in')?.forEach((el) => {
+            if (!el.getAttribute(CONFIG.MARKER_ATTR)) newMessages.add(el);
           });
         } catch (_) {}
       }
@@ -459,14 +481,22 @@
   function scanExistingMessages(root) {
     if (!isEnabled) return;
     const messages = new Set();
-    queryAll(root, SELECTORS.messageRow).forEach((el) => {
-      const msgEl = el.closest('.message-in') || el;
-      if (isIncomingMessage(msgEl)) messages.add(msgEl);
-    });
-    root.querySelectorAll?.('.message-in')?.forEach((el) => messages.add(el));
-    messages.forEach((el) => {
-      if (!el.getAttribute(CONFIG.MARKER_ATTR)) pendingQueue.push(el);
-    });
+
+    // Current WhatsApp Web pattern
+    try {
+      root.querySelectorAll('[data-id^="false_"]').forEach((el) => {
+        if (!el.getAttribute(CONFIG.MARKER_ATTR)) messages.add(el);
+      });
+    } catch (_) {}
+
+    // Legacy class pattern
+    try {
+      root.querySelectorAll('.message-in').forEach((el) => {
+        if (!el.getAttribute(CONFIG.MARKER_ATTR) && isIncomingMessage(el)) messages.add(el);
+      });
+    } catch (_) {}
+
+    messages.forEach((el) => pendingQueue.push(el));
     if (pendingQueue.length > 0) drainQueue();
   }
 
@@ -500,20 +530,20 @@
           clearInterval(interval);
           startPolling();
         }
-        if (retries > 20) {
+        if (retries > 30) {
           clearInterval(interval);
-          startPolling();
+          startPolling(); // keep polling even if not found yet
         }
-      }, 3000);
+      }, 2000);
     } else {
       startPolling();
-    } 
+    }
   }
 
   if (document.readyState === 'complete') {
-    setTimeout(init, 1000);
+    setTimeout(init, 1200);
   } else {
-    window.addEventListener('load', () => setTimeout(init, 1500));
+    window.addEventListener('load', () => setTimeout(init, 1800));
   }
 
 })();
